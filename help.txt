@@ -1,0 +1,37 @@
+TILED FORMAT
+
+Tilesets:
+- Save the tileset in TSJ
+- Place your tileset files in the  "Tiled/Tilesets/"
+- tile dimensions match BASE_TILE_SIZE in constants
+
+Tile Layers:
+1. Add tile layers
+ - Tiles are referenced by global IDs linked to tilesets
+
+Object Layers:
+1. MapTransition:
+   - Name "MapTransition"
+   - Each object represents a map switch point
+   - Format the object’s name as: targetMap:tileX,tileY
+     (smallFlowerMap:9,4)
+   - tileX and tileY are specified in tile coordinates, not pixels
+
+Scaling:
+- BASE_TILE_SIZE (16) and PIXEL_SCALE (2.0)
+- Pixel coordinates are computed as:
+     Pixel = Tile * BASE_TILE_SIZE * PIXEL_SCALE
+
+Resources:
+Tiled Map Editor:
+    Website: 
+https://www.mapeditor.org/
+    Doc: 
+https://doc.mapeditor.org/en/stable/
+
+cJSON:
+https://github.com/DaveGamble/cJSON
+
+Raylib
+https://www.raylib.com/
+https://www.raylib.com/cheatsheet/cheatsheet.html
