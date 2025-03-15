@@ -97,6 +97,12 @@ void InitPlayer(Player* p, const char* walkSpritePath, Vector2 startPos, float s
     p->frameTime = 0.0f;
     p->frameDelay = 0.1f;
     p->currentFrame = 0;
+
+    p->physics.isAttacking = false;
+    p->physics.attackDuration = 0.3f;
+    p->physics.attackTimer = 0;
+    p->physics.hitFlashTimer = 0;
+    p->physics.hitFlashColor = WHITE;
 }
 
 void LoadActionSprite(Player* p, const char* actionSpritePath, int rows, int columns) {
@@ -175,10 +181,51 @@ void UpdatePlayer(Player* p, GameMap* map, float dt) {
         p->currentFrame = 0;
         p->frameTime = 0.0f;
     }
-    if (IsKeyPressed(KEY_J)) {
-        p->state = PLAYER_STATE_ACTION2;
-        p->currentFrame = 0;
-        p->frameTime = 0.0f;
+    if (IsKeyPressed(KEY_J) && !p->physics.isAttacking) {
+        p->state = PLAYER_STATE_ATTACK;
+        p->physics.isAttacking = true;
+        p->physics.attackTimer = p->physics.attackDuration;
+        
+        // Set up attack hitbox
+        Rectangle collisionRect = GetPlayerCollisionRect(p);
+        float attackWidth = collisionRect.width * 1.5f;
+        float attackHeight = collisionRect.height * 1.5f;
+        
+        // Position attack hitbox based on facing direction
+        switch (p->facingDir) {
+            case 0: // Down
+                p->physics.attackHitbox = (Rectangle){
+                    collisionRect.x - attackWidth/4,
+                    collisionRect.y + collisionRect.height,
+                    attackWidth,
+                    attackHeight/2
+                };
+                break;
+            case 1: // Up
+                p->physics.attackHitbox = (Rectangle){
+                    collisionRect.x - attackWidth/4,
+                    collisionRect.y - attackHeight/2,
+                    attackWidth,
+                    attackHeight/2
+                };
+                break;
+            case 2: // Left
+                p->physics.attackHitbox = (Rectangle){
+                    collisionRect.x - attackWidth/2,
+                    collisionRect.y - attackHeight/4,
+                    attackWidth/2,
+                    attackHeight
+                };
+                break;
+            case 3: // Right
+                p->physics.attackHitbox = (Rectangle){
+                    collisionRect.x + collisionRect.width,
+                    collisionRect.y - attackHeight/4,
+                    attackWidth/2,
+                    attackHeight
+                };
+                break;
+        }
     }
     if (IsKeyPressed(KEY_K)) {
         p->state = PLAYER_STATE_ACTION3;
@@ -210,6 +257,30 @@ void UpdatePlayer(Player* p, GameMap* map, float dt) {
                 }
             }
             break;
+        case PLAYER_STATE_ATTACK:
+            if (p->frameTime >= p->frameDelay) {
+                p->currentFrame++;
+                p->frameTime = 0.0f;
+                if (p->currentFrame >= p->sprite.columns) {
+                    p->currentFrame = 0;
+                    p->state = PLAYER_STATE_IDLE;
+                }
+            }
+            break;
+    }
+    
+    // Update attack timer
+    if (p->physics.isAttacking) {
+        p->physics.attackTimer -= dt;
+        if (p->physics.attackTimer <= 0) {
+            p->physics.isAttacking = false;
+            p->state = PLAYER_STATE_IDLE;
+        }
+    }
+    
+    // Update hit flash timer
+    if (p->physics.hitFlashTimer > 0) {
+        p->physics.hitFlashTimer -= dt;
     }
     
     #ifdef DEBUG_PLAYER
@@ -237,10 +308,16 @@ void DrawPlayer(Player* p) {
     
     DrawTexturePro(p->sprite.texture, srcRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
     
-    #if DEBUG_DRAW_PLAYER_COLLISION
-    Rectangle cRect = GetPlayerCollisionRect(p);
-    DebugDrawPlayerCollision(cRect);
-    #endif
+    // Draw debug collision and attack boxes
+    Rectangle collisionRect = GetPlayerCollisionRect(p);
+    Color boxColor = p->physics.hitFlashTimer > 0 ? p->physics.hitFlashColor : GREEN;
+    DrawRectangleLines((int)collisionRect.x, (int)collisionRect.y, 
+                       (int)collisionRect.width, (int)collisionRect.height, boxColor);
+    
+    if (p->physics.isAttacking) {
+        DrawRectangleLines((int)p->physics.attackHitbox.x, (int)p->physics.attackHitbox.y,
+                          (int)p->physics.attackHitbox.width, (int)p->physics.attackHitbox.height, RED);
+    }
 }
 
 void UnloadPlayer(Player* p) {

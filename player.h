@@ -7,6 +7,7 @@
 typedef enum {
     PLAYER_STATE_IDLE = 0,
     PLAYER_STATE_WALK,
+    PLAYER_STATE_ATTACK,
     PLAYER_STATE_ACTION1,
     PLAYER_STATE_ACTION2,
     PLAYER_STATE_ACTION3
@@ -25,6 +26,12 @@ typedef struct PlayerPhysics {
     float scale;// How big to draw
     float speed; //moce speed
     float collisionShrinkFactor;//Shrink factor for collision box
+    Rectangle attackHitbox;  // Add attack hitbox
+    bool isAttacking;       // Track attack state
+    float attackDuration;   // How long the attack lasts
+    float attackTimer;      // Current attack time
+    Color hitFlashColor;    // Color to flash when hit
+    float hitFlashTimer;    // Timer for hit flash effect
 } PlayerPhysics;
 
 typedef struct Player {

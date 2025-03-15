@@ -1,0 +1,34 @@
+LanternKeeper
+Player
+DONE	Movement (4/8-directional)
+	Dodge/roll mechanics
+	Attack (melee, animations)
+Combat System
+	Melee attack logic
+	Hit detection & collision
+    Cooldown & animation states
+	Visual effects (particles, knockback)
+Lantern & Lighting Mechanics
+	Lantern power gauge (depletion/recharge)
+	Dynamic illumination (shader/light mask)
+	Tile interaction (light/dark effects on enemies)
+Enemy AI
+	State machine (Patrol, Alert, Attack, Flee)
+	Reaction to light (weakened when lit)
+	Simple pathfinding/line-of-sight checks
+Map & World Management
+DONE	Tiled map loader
+DONE	Tile collision detection
+DONE	Map transitions
+Graphics & Rendering
+DONE	Pixel art sprite loading
+DONE	Animation handling (sprite sheets)
+DONE	Camera system (Camera2D in Raylib)
+Audio
+	Background music loops
+	Ambient sounds (environment, footsteps)
+	Combat sound effects (hits, lantern ignition)
+UI & HUD
+	Lantern power/health bars
+	Minimal text prompts/dialogue
+	Other UI elements (score, game state)
