@@ -14,12 +14,6 @@ Rectangle GetPlayerCollisionRect(const Player* p) {
     return (Rectangle){ p->physics.position.x + offsetX, p->physics.position.y + offsetY, collW, collH };
 }
 
-static void DebugDrawPlayerCollision(Rectangle rect) {
-#if DEBUG_DRAW_PLAYER_COLLISION
-    DrawRectangleLines((int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height, GREEN);
-#endif
-}
-
 static int CheckCollisionPolyRectangle(Vector2* poly, int polyCount, Rectangle rec) {
     Vector2 corners[4] = {
         { rec.x,             rec.y },
@@ -74,6 +68,53 @@ static void LoadSpriteSheet(PlayerSprite* ps, const char* path, int rows, int co
     ps->frameHeight = ps->texture.height / rows;
 }
 
+// Add these new functions
+static Rectangle CreateBasicAttackHitbox(const Player* p, Rectangle collisionRect) {
+    float attackWidth = collisionRect.width * 1.5f;
+    float attackHeight = collisionRect.height * 1.5f;
+    
+    float centerX = collisionRect.x + collisionRect.width / 2.0f;
+    float centerY = collisionRect.y + collisionRect.height / 2.0f;
+    
+    Rectangle hitbox = {0};
+    
+    switch (p->facingDir) {
+        case 0: // Down
+            hitbox = (Rectangle){
+                centerX - attackWidth / 2.0f,
+                centerY,
+                attackWidth,
+                attackHeight / 2.0f
+            };
+            break;
+        case 1: // Up
+            hitbox = (Rectangle){
+                centerX - attackWidth / 2.0f,
+                centerY - attackHeight / 2.0f,
+                attackWidth,
+                attackHeight / 2.0f
+            };
+            break;
+        case 2: // Left
+            hitbox = (Rectangle){
+                centerX - attackWidth / 2.0f,
+                centerY - attackHeight / 2.0f,
+                attackWidth / 2.0f,
+                attackHeight
+            };
+            break;
+        case 3: // Right
+            hitbox = (Rectangle){
+                centerX,
+                centerY - attackHeight / 2.0f,
+                attackWidth / 2.0f,
+                attackHeight
+            };
+            break;
+    }
+    return hitbox;
+}
+
 //Public
 
 void InitPlayer(Player* p, const char* walkSpritePath, Vector2 startPos, float scaleVal) {
@@ -103,6 +144,8 @@ void InitPlayer(Player* p, const char* walkSpritePath, Vector2 startPos, float s
     p->physics.attackTimer = 0;
     p->physics.hitFlashTimer = 0;
     p->physics.hitFlashColor = WHITE;
+
+    p->physics.createAttackHitbox = CreateBasicAttackHitbox; // Set default attack
 }
 
 void LoadActionSprite(Player* p, const char* actionSpritePath, int rows, int columns) {
@@ -123,59 +166,61 @@ static void SelectActiveSprite(Player* p) {
 }
 
 void UpdatePlayer(Player* p, GameMap* map, float dt) {
+    // Store old position for collision resolution
+    Vector2 oldPos = p->physics.position;
+    
+    if (ENTITIES_CAN_MOVE) {
+        // Track movement direction
+        Vector2 moveDir = {0.0f, 0.0f};
+        
+        // Capture input direction
+        if (IsKeyDown(KEY_RIGHT)) {
+            moveDir.x += 1.0f;
+            p->facingDir = 3;
+            p->state = PLAYER_STATE_WALK;
+        }
+        if (IsKeyDown(KEY_LEFT)) {
+            moveDir.x -= 1.0f;
+            p->facingDir = 2;
+            p->state = PLAYER_STATE_WALK;
+        }
+        if (IsKeyDown(KEY_UP)) {
+            moveDir.y -= 1.0f;
+            p->facingDir = 1;
+            p->state = PLAYER_STATE_WALK;
+        }
+        if (IsKeyDown(KEY_DOWN)) {
+            moveDir.y += 1.0f;
+            p->facingDir = 0;
+            p->state = PLAYER_STATE_WALK;
+        }
+        
+        // Apply movement speed (now using the same speed for diagonal)
+        float speed = p->physics.speed;
+        if (moveDir.x != 0.0f && moveDir.y != 0.0f) {
+            // For diagonal movement, multiply by approximately 0.707 (1/√2)
+            speed *= 0.7071f;
+        }
+        
+        moveDir.x = (moveDir.x != 0.0f) ? (moveDir.x > 0.0f ? 1.0f : -1.0f) : 0.0f;
+        moveDir.y = (moveDir.y != 0.0f) ? (moveDir.y > 0.0f ? 1.0f : -1.0f) : 0.0f;
+        
+        // Apply movement
+        p->physics.position.x += moveDir.x * speed;
+        Rectangle playerRect = GetPlayerCollisionRect(p);
+        if (CheckCollisionObjects(map, playerRect, PIXEL_SCALE)) {
+            p->physics.position.x = oldPos.x;
+        }
+        
+        p->physics.position.y += moveDir.y * speed;
+        playerRect = GetPlayerCollisionRect(p);
+        if (CheckCollisionObjects(map, playerRect, PIXEL_SCALE)) {
+            p->physics.position.y = oldPos.y;
+        }
+    }
+
     p->frameTime += dt;
 
-    // Movement
-    int moving = 0; 
-    float oldX = p->physics.position.x;
-    float oldY = p->physics.position.y;
-
-    // Left
-    if (IsKeyDown(KEY_LEFT)) {
-        p->physics.position.x -= p->physics.speed;
-        p->facingDir = 2; // left
-        moving = 1;
-        if (CheckCollisionObjects(map, GetPlayerCollisionRect(p), p->physics.scale)) {
-            p->physics.position.x = oldX;
-        }
-    }
-    // Right
-    else if (IsKeyDown(KEY_RIGHT)) {
-        p->physics.position.x += p->physics.speed;
-        p->facingDir = 3; // right
-        moving = 1;
-        if (CheckCollisionObjects(map, GetPlayerCollisionRect(p), p->physics.scale)) {
-            p->physics.position.x = oldX;
-        }
-    }
-    // Up
-    if (IsKeyDown(KEY_UP)) {
-        p->physics.position.y -= p->physics.speed;
-        p->facingDir = 1; // up
-        moving = 1;
-        if (CheckCollisionObjects(map, GetPlayerCollisionRect(p), p->physics.scale)) {
-            p->physics.position.y = oldY;
-        }
-    }
-    // Down
-    else if (IsKeyDown(KEY_DOWN)) {
-        p->physics.position.y += p->physics.speed;
-        p->facingDir = 0; // down
-        moving = 1;
-        if (CheckCollisionObjects(map, GetPlayerCollisionRect(p), p->physics.scale)) {
-            p->physics.position.y = oldY;
-        }
-    }
-    
-    if (moving && (p->state != PLAYER_STATE_ACTION1 &&
-                   p->state != PLAYER_STATE_ACTION2 &&
-                   p->state != PLAYER_STATE_ACTION3)) {
-        p->state = PLAYER_STATE_WALK;
-    }
-    else if (!moving && p->state == PLAYER_STATE_WALK) {
-        p->state = PLAYER_STATE_IDLE;
-    }
-    
     if (IsKeyPressed(KEY_H)) {
         p->state = PLAYER_STATE_ACTION1;
         p->currentFrame = 0;
@@ -183,49 +228,12 @@ void UpdatePlayer(Player* p, GameMap* map, float dt) {
     }
     if (IsKeyPressed(KEY_J) && !p->physics.isAttacking) {
         p->state = PLAYER_STATE_ATTACK;
-        p->physics.isAttacking = true;
+        p->physics.isAttacking = 1;
         p->physics.attackTimer = p->physics.attackDuration;
         
-        // Set up attack hitbox
+        // Use the function pointer to create the attack hitbox
         Rectangle collisionRect = GetPlayerCollisionRect(p);
-        float attackWidth = collisionRect.width * 1.5f;
-        float attackHeight = collisionRect.height * 1.5f;
-        
-        // Position attack hitbox based on facing direction
-        switch (p->facingDir) {
-            case 0: // Down
-                p->physics.attackHitbox = (Rectangle){
-                    collisionRect.x - attackWidth/4,
-                    collisionRect.y + collisionRect.height,
-                    attackWidth,
-                    attackHeight/2
-                };
-                break;
-            case 1: // Up
-                p->physics.attackHitbox = (Rectangle){
-                    collisionRect.x - attackWidth/4,
-                    collisionRect.y - attackHeight/2,
-                    attackWidth,
-                    attackHeight/2
-                };
-                break;
-            case 2: // Left
-                p->physics.attackHitbox = (Rectangle){
-                    collisionRect.x - attackWidth/2,
-                    collisionRect.y - attackHeight/4,
-                    attackWidth/2,
-                    attackHeight
-                };
-                break;
-            case 3: // Right
-                p->physics.attackHitbox = (Rectangle){
-                    collisionRect.x + collisionRect.width,
-                    collisionRect.y - attackHeight/4,
-                    attackWidth/2,
-                    attackHeight
-                };
-                break;
-        }
+        p->physics.attackHitbox = p->physics.createAttackHitbox(p, collisionRect);
     }
     if (IsKeyPressed(KEY_K)) {
         p->state = PLAYER_STATE_ACTION3;

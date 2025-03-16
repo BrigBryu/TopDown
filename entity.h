@@ -30,7 +30,7 @@ typedef struct EntityPhysics {
     float speed;
     float collisionShrinkFactor;
     Rectangle attackHitbox;  // Add attack hitbox
-    bool isAttacking;       // Track attack state
+    int isAttacking;       // Changed from bool to int
     float attackDuration;   // How long the attack lasts
     float attackTimer;      // Current attack time
     Color hitFlashColor;    // Color to flash when hit
@@ -55,8 +55,8 @@ typedef struct Entity {
     int type;
     
     // Entity state
-    bool active;
-    bool isAlive;
+    int active;    // Changed from bool to int
+    int isAlive;   // Changed from bool to int
     
     // Custom data pointer for specific entity types
     void* data;
@@ -81,7 +81,7 @@ enum EntityType {
 };
 
 // Global movement control
-extern bool ENTITIES_CAN_MOVE;
+extern int ENTITIES_CAN_MOVE;
 
 // Basic entity functions
 void InitEntitySprite(EntitySprite* sprite, const char* texturePath, int rows, int columns, float frameDelay);
@@ -105,5 +105,8 @@ void DestroyEntity(Entity* entity);
 void RenderEntityDebug(const Entity* entity);
 void EntityStartAttack(Entity* entity);
 void EntityTakeHit(Entity* entity);
+
+// Helper function for collision detection
+int CheckCollisionPolyRectangle(Vector2* poly, int polyCount, Rectangle rec);
 
 #endif 

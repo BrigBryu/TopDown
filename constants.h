@@ -16,4 +16,7 @@
 //draw MapTransition polygons
 #define DEBUG_DRAW_MAPTRANSITIONS 1
 
+// Entity movement control
+extern int ENTITIES_CAN_MOVE;  // Changed from bool to int
+
 #endif

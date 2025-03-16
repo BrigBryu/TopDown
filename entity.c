@@ -1,10 +1,11 @@
 #include "entity.h"
+#include "constants.h"  // Add this for PIXEL_SCALE
 #include <stdlib.h>
 #include <math.h>
 #include "map_manager.h"
 
 // Define the global movement control variable
-bool ENTITIES_CAN_MOVE = true;
+int ENTITIES_CAN_MOVE = 1;
 
 void InitEntitySprite(EntitySprite* sprite, const char* texturePath, int rows, int columns, float frameDelay) {
     sprite->texture = LoadTexture(texturePath);
@@ -55,20 +56,18 @@ void UpdateBasicMonster(Entity* entity, GameMap* map, float dt) {
     if (ENTITIES_CAN_MOVE) {
         data->moveTimer += dt;
         if (data->moveTimer >= data->moveInterval) {
-            // Choose new random direction
             data->moveDirection.x = (float)(rand() % 3 - 1);
             data->moveDirection.y = (float)(rand() % 3 - 1);
             data->moveTimer = 0;
         }
         
-        // Store old position for collision checking
         Vector2 oldPos = entity->physics.position;
         
         // Move monster
         entity->physics.position.x += data->moveDirection.x * entity->physics.speed * dt;
         entity->physics.position.y += data->moveDirection.y * entity->physics.speed * dt;
         
-        // Basic collision check with map
+        // Check collision with map
         Rectangle entityRect = GetEntityCollisionRect(entity);
         for (int i = 0; i < map->collisionLayer.count; i++) {
             Polygon poly = map->collisionLayer.polygons[i];
@@ -76,23 +75,19 @@ void UpdateBasicMonster(Entity* entity, GameMap* map, float dt) {
             
             Vector2 worldPoly[128];
             for (int j = 0; j < poly.pointCount; j++) {
-                worldPoly[j].x = poly.points[j].x * entity->physics.scale;
-                worldPoly[j].y = poly.points[j].y * entity->physics.scale;
+                worldPoly[j].x = poly.points[j].x * PIXEL_SCALE;
+                worldPoly[j].y = poly.points[j].y * PIXEL_SCALE;
             }
             
-            if (CheckCollisionRecs(entityRect, (Rectangle){
-                worldPoly[0].x, worldPoly[0].y,
-                worldPoly[1].x - worldPoly[0].x,
-                worldPoly[1].y - worldPoly[0].y
-            })) {
+            if (CheckCollisionPolyRectangle(worldPoly, poly.pointCount, entityRect)) {
                 entity->physics.position = oldPos;
-                data->moveTimer = data->moveInterval;
+                data->moveTimer = data->moveInterval; // Force new direction
                 break;
             }
         }
     }
     
-    // Update attack timer
+    // Update timers
     if (entity->physics.isAttacking) {
         entity->physics.attackTimer -= dt;
         if (entity->physics.attackTimer <= 0) {
@@ -100,7 +95,6 @@ void UpdateBasicMonster(Entity* entity, GameMap* map, float dt) {
         }
     }
     
-    // Update hit flash timer
     if (entity->physics.hitFlashTimer > 0) {
         entity->physics.hitFlashTimer -= dt;
     }
@@ -181,6 +175,33 @@ void DrawMonster(Entity* entity) {
     };
     
     DrawTexturePro(entity->sprite.texture, srcRec, destRec, (Vector2){0, 0}, 0.0f, WHITE);
+    
+    // Draw debug collision box
+    #if DEBUG_DRAW_ENTITY_COLLISION
+        Rectangle collisionRect = GetEntityCollisionRect(entity);
+        Color boxColor = entity->physics.hitFlashTimer > 0 ? 
+                        entity->physics.hitFlashColor : GREEN;
+        DrawRectangleLines(
+            (int)collisionRect.x, 
+            (int)collisionRect.y, 
+            (int)collisionRect.width, 
+            (int)collisionRect.height, 
+            boxColor
+        );
+    #endif
+
+    // Draw attack hitbox if attacking
+    #if DEBUG_DRAW_ATTACK_HITBOX
+        if (entity->physics.isAttacking) {
+            DrawRectangleLines(
+                (int)entity->physics.attackHitbox.x,
+                (int)entity->physics.attackHitbox.y,
+                (int)entity->physics.attackHitbox.width,
+                (int)entity->physics.attackHitbox.height,
+                RED
+            );
+        }
+    #endif
 }
 
 void MonsterOnCollision(Entity* entity, Entity* other) {
@@ -360,4 +381,37 @@ void EntityStartAttack(Entity* entity) {
 void EntityTakeHit(Entity* entity) {
     entity->physics.hitFlashTimer = 0.2f; // Flash for 0.2 seconds
     entity->physics.hitFlashColor = RED;
+}
+
+int CheckCollisionPolyRectangle(Vector2* poly, int polyCount, Rectangle rec) {
+    Vector2 corners[4] = {
+        { rec.x, rec.y },
+        { rec.x + rec.width, rec.y },
+        { rec.x + rec.width, rec.y + rec.height },
+        { rec.x, rec.y + rec.height }
+    };
+    
+    // Check if any corner of the rectangle is inside the polygon
+    for (int i = 0; i < 4; i++) {
+        if (CheckCollisionPointPoly(corners[i], poly, polyCount)) {
+            return 1;
+        }
+    }
+    
+    // Check if any polygon edge intersects with any rectangle edge
+    for (int i = 0; i < polyCount; i++) {
+        Vector2 p1 = poly[i];
+        Vector2 p2 = poly[(i + 1) % polyCount];
+        
+        for (int j = 0; j < 4; j++) {
+            Vector2 r1 = corners[j];
+            Vector2 r2 = corners[(j + 1) % 4];
+            
+            if (CheckCollisionLines(p1, p2, r1, r2, NULL)) {
+                return 1;
+            }
+        }
+    }
+    
+    return 0;
 } 

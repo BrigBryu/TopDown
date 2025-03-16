@@ -4,6 +4,12 @@
 #include "raylib.h"
 #include "tiled_loader.h"
 
+// Forward declare the Player struct first
+typedef struct Player Player;
+
+// Now we can use Player* in the function pointer typedef
+typedef Rectangle (*AttackHitboxFn)(const Player* p, Rectangle collisionRect);
+
 typedef enum {
     PLAYER_STATE_IDLE = 0,
     PLAYER_STATE_WALK,
@@ -32,8 +38,10 @@ typedef struct PlayerPhysics {
     float attackTimer;      // Current attack time
     Color hitFlashColor;    // Color to flash when hit
     float hitFlashTimer;    // Timer for hit flash effect
+    AttackHitboxFn createAttackHitbox;  // Function pointer for creating attack hitbox
 } PlayerPhysics;
 
+// Now define the actual Player struct
 typedef struct Player {
     // The "active" sprite used for drawing currentlly
     PlayerSprite sprite;

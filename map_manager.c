@@ -97,16 +97,25 @@ static int CheckMapTransitionCollision(GameMap* map, Rectangle playerRect, float
             worldPoly[j].x = poly.points[j].x * scale;
             worldPoly[j].y = poly.points[j].y * scale;
         }
-        //check player corners for collision
+        
+        // Debug output
+        TraceLog(LOG_DEBUG, "Transition %d: Player at (%.2f, %.2f), checking against polygon:", 
+                i, playerRect.x, playerRect.y);
+        for (int j = 0; j < poly.pointCount; j++) {
+            TraceLog(LOG_DEBUG, "Point %d: (%.2f, %.2f)", j, worldPoly[j].x, worldPoly[j].y);
+        }
+
         Vector2 corners[4] = {
             { playerRect.x, playerRect.y },
             { playerRect.x + playerRect.width, playerRect.y },
             { playerRect.x + playerRect.width, playerRect.y + playerRect.height },
             { playerRect.x, playerRect.y + playerRect.height }
         };
+        
         for (int c = 0; c < 4; c++) {
             if (CheckCollisionPointPoly(corners[c], worldPoly, poly.pointCount)) {
                 *transitionIndex = i;
+                TraceLog(LOG_INFO, "Transition triggered at corner %d", c);
                 return 1;
             }
         }
@@ -118,7 +127,36 @@ static int CheckMapTransitionCollision(GameMap* map, Rectangle playerRect, float
 MapManager* CreateMapManager(const char* mapFilePath) {
     MapManager* manager = (MapManager*)malloc(sizeof(MapManager));
     if (manager) {
+        // Initialize to NULL/0 first
+        manager->entityManager = NULL;
+        manager->currentMapName = NULL;
+        
+        // Load the map
         manager->currentMap = LoadGameMap(mapFilePath);
+        
+        // Create entity manager
+        manager->entityManager = CreateEntityManager();
+        if (!manager->entityManager) {
+            TraceLog(LOG_ERROR, "Failed to create entity manager");
+            free(manager);
+            return NULL;
+        }
+        
+        // Extract and store map name
+        const char* fileName = strrchr(mapFilePath, '/');
+        if (fileName) {
+            fileName++; // Skip the '/'
+        } else {
+            fileName = mapFilePath;
+        }
+        manager->currentMapName = strdup(fileName);
+        char* dot = strrchr(manager->currentMapName, '.');
+        if (dot) *dot = '\0'; // Remove extension
+        
+        TraceLog(LOG_INFO, "Created map manager for map: %s", manager->currentMapName);
+        
+        // Spawn initial entities
+        SpawnMapEntities(manager);
     }
     return manager;
 }
@@ -126,53 +164,126 @@ MapManager* CreateMapManager(const char* mapFilePath) {
 void DestroyMapManager(MapManager* manager) {
     if (manager) {
         UnloadGameMap(&manager->currentMap);
+        DestroyEntityManager(manager->entityManager);
+        free(manager->currentMapName);
         free(manager);
     }
 }
 
-void UpdateMapManager(MapManager* manager, Player* player, float dt) {
-    // Update the player
-    UpdatePlayer(player, &manager->currentMap, dt);
+void SpawnMapEntities(MapManager* manager) {
+    TraceLog(LOG_INFO, "Spawning entities for map: %s", manager->currentMapName);
     
-    Rectangle playerRect = GetPlayerCollisionRect(player);
-    
-    // Check if player triggers a map transition
-    int transitionIndex = -1;
-    if (CheckMapTransitionCollision(&manager->currentMap, playerRect, player->physics.scale, &transitionIndex)) {
-        //new map path
-        char newMapPath[512];
-        snprintf(newMapPath, sizeof(newMapPath), "Tiled/Tiledmaps/%s.tmj", 
-                 manager->currentMap.transitions[transitionIndex].targetMap);
-        TraceLog(LOG_INFO, "Switching map: %s", newMapPath);
+    if (strcmp(manager->currentMapName, "field") == 0) {
+        // Spawn field map entities
+        Entity* slime = CreateSlime((Vector2){300, 300}, 2.0f);
+        if (slime) {
+            InitEntitySprite(&slime->sprite, 
+                "SproutLandsPack/Characters/BasicCharakterSpritesheet.png", 4, 4, 0.1f);
+            AddEntity(manager->entityManager, slime);
+            TraceLog(LOG_INFO, "Spawned slime at (300, 300)");
+        }
         
-        // Get the new start pos
-        Vector2 newStart = { manager->currentMap.transitions[transitionIndex].startX, 
-                             manager->currentMap.transitions[transitionIndex].startY };
-                             
-        // Unload the current map and load the new map
+        Entity* bat = CreateBat((Vector2){400, 400}, 2.0f);
+        if (bat) {
+            InitEntitySprite(&bat->sprite, 
+                "SproutLandsPack/Characters/BasicCharakterSpritesheet.png", 4, 4, 0.1f);
+            AddEntity(manager->entityManager, bat);
+            TraceLog(LOG_INFO, "Spawned bat at (400, 400)");
+        }
+    }
+    else if (strcmp(manager->currentMapName, "cave") == 0) {
+        // Spawn cave map entities
+        Entity* skeleton = CreateSkeleton((Vector2){200, 200}, 2.0f);
+        if (skeleton) {
+            InitEntitySprite(&skeleton->sprite, 
+                "SproutLandsPack/Characters/BasicCharakterSpritesheet.png", 4, 4, 0.1f);
+            AddEntity(manager->entityManager, skeleton);
+            TraceLog(LOG_INFO, "Spawned skeleton at (200, 200)");
+        }
+    }
+}
+
+void ClearMapEntities(MapManager* manager) {
+    DestroyEntityManager(manager->entityManager);
+    manager->entityManager = CreateEntityManager();
+}
+
+void UpdateMapManager(MapManager* manager, Player* player, float dt) {
+    if (!manager || !manager->entityManager) return;
+    
+    // Check for map transitions
+    Rectangle playerRect = GetPlayerCollisionRect(player);
+    int transitionIndex = -1;
+    
+    // Use existing CheckMapTransitionCollision function instead of CheckCollisionPolyRec
+    if (CheckMapTransitionCollision(&manager->currentMap, playerRect, PIXEL_SCALE, &transitionIndex)) {
+        MapTransition* transition = &manager->currentMap.transitions[transitionIndex];
+        
+        // Validate transition data
+        if (!transition->targetMap) {
+            TraceLog(LOG_ERROR, "Invalid transition: NULL target map");
+            return;
+        }
+
+        char newMapPath[512];
+        snprintf(newMapPath, sizeof(newMapPath), "Tiled/Tiledmaps/%s.tmj", transition->targetMap);
+        
+        TraceLog(LOG_INFO, "Loading new map: %s", newMapPath);
+        
+        // Store transition data before clearing anything
+        char* targetMap = strdup(transition->targetMap);
+        float startX = transition->startX;
+        float startY = transition->startY;
+        
+        if (!targetMap) {
+            TraceLog(LOG_ERROR, "Failed to copy target map name");
+            return;
+        }
+        
+        // Clear current map's entities
+        ClearMapEntities(manager);
+        
+        // Unload current map and load new map
         UnloadGameMap(&manager->currentMap);
-        manager->currentMap = LoadGameMap(newMapPath); 
-        player->physics.position = newStart;
+        manager->currentMap = LoadGameMap(newMapPath);
+        
+        // Update map name
+        free(manager->currentMapName);
+        manager->currentMapName = strdup(targetMap);
+        
+        // Update player position
+        player->physics.position.x = startX;
+        player->physics.position.y = startY;
+        
+        // Spawn new map's entities
+        SpawnMapEntities(manager);
+        
+        TraceLog(LOG_INFO, "Map transition complete. New player position: (%.2f, %.2f)", 
+                 player->physics.position.x, player->physics.position.y);
+        
+        // Clean up
+        free(targetMap);
+    }
+    
+    // Update all entities if movement is enabled
+    if (manager->entityManager && ENTITIES_CAN_MOVE) {
+        UpdateEntities(manager->entityManager, &manager->currentMap, dt);
     }
 }
 
 void RenderMapManager(MapManager* manager, float scale) {
-    // Render tile layers
+    // Render map layers
     RenderGameMap(&manager->currentMap, scale);
-    // Render debug if on
+    
+    // Render entities
+    DrawEntities(manager->entityManager);
+    
+    // Debug rendering if enabled
+    #if DEBUG_DRAW_COLLISIONS
     RenderCollisionPolygons(&manager->currentMap, scale);
-    RenderMapTransitionPolygons(&manager->currentMap, scale); 
-    #if DEBUG_GRID
-    for (int y = 0; y < manager->currentMap.mapHeight; y++) {
-        for (int x = 0; x < manager->currentMap.mapWidth; x++) {
-            Rectangle tileRect = {
-                x * manager->currentMap.tileWidth * scale,
-                y * manager->currentMap.tileHeight * scale,
-                manager->currentMap.tileWidth * scale,
-                manager->currentMap.tileHeight * scale
-            };
-            DrawRectangleLines((int)tileRect.x, (int)tileRect.y, (int)tileRect.width, (int)tileRect.height, DARKGRAY);
-        }
-    }
+    #endif
+    
+    #if DEBUG_DRAW_MAPTRANSITIONS
+    RenderMapTransitionPolygons(&manager->currentMap, scale);
     #endif
 }
