@@ -4,11 +4,10 @@
 #include "raylib.h"
 #include "tiled_loader.h"
 
-// Forward declare the Player struct first
 typedef struct Player Player;
 
-// Now we can use Player* in the function pointer typedef
 typedef Rectangle (*AttackHitboxFn)(const Player* p, Rectangle collisionRect);
+typedef void (*DamageFn)(struct Entity* monster, int damage);
 
 typedef enum {
     PLAYER_STATE_IDLE = 0,
@@ -27,18 +26,29 @@ typedef struct PlayerSprite {
     int frameHeight;//texture.height / rows
 } PlayerSprite;
 
+typedef enum {
+    ATTACK_BASIC,
+    ATTACK_STRONG,
+    ATTACK_SUPER
+} AttackType;
+
 typedef struct PlayerPhysics {
     Vector2 position;
     float scale;// How big to draw
     float speed; //moce speed
     float collisionShrinkFactor;//Shrink factor for collision box
     Rectangle attackHitbox;  // Add attack hitbox
-    bool isAttacking;       // Track attack state
+    int isAttacking;       // Track attack state
     float attackDuration;   // How long the attack lasts
     float attackTimer;      // Current attack time
     Color hitFlashColor;    // Color to flash when hit
     float hitFlashTimer;    // Timer for hit flash effect
     AttackHitboxFn createAttackHitbox;  // Function pointer for creating attack hitbox
+    int maxHealth;         // Maximum health points
+    int currentHealth;     // Current health points
+    float attackDamage;    // Damage dealt to monsters
+    Vector2 lastCursorPos;    // Store cursor position for basic attack
+    float superAttackRadius;  // Radius for super attack
 } PlayerPhysics;
 
 // Now define the actual Player struct
@@ -68,5 +78,9 @@ void UpdatePlayer(Player* p, GameMap* map, float dt);
 void DrawPlayer(Player* p);
 void UnloadPlayer(Player* p);
 Rectangle GetPlayerCollisionRect(const Player* p);
+
+// Add these function declarations at the bottom
+void PlayerTakeDamage(Player* p, int damage);
+int IsPlayerAlive(const Player* p);
 
 #endif

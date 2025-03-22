@@ -17,6 +17,6 @@
 #define DEBUG_DRAW_MAPTRANSITIONS 1
 
 // Entity movement control
-extern int ENTITIES_CAN_MOVE;  // Changed from bool to int
+extern int ENTITIES_CAN_MOVE;  // Remove the #define and make it extern
 
 #endif

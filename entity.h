@@ -55,8 +55,8 @@ typedef struct Entity {
     int type;
     
     // Entity state
-    int active;    // Changed from bool to int
-    int isAlive;   // Changed from bool to int
+    int active;
+    int isAlive;
     
     // Custom data pointer for specific entity types
     void* data;

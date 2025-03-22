@@ -4,8 +4,6 @@
 #include <math.h>
 #include "map_manager.h"
 
-// Define the global movement control variable
-int ENTITIES_CAN_MOVE = 1;
 
 void InitEntitySprite(EntitySprite* sprite, const char* texturePath, int rows, int columns, float frameDelay) {
     sprite->texture = LoadTexture(texturePath);

@@ -1,6 +1,7 @@
 #include "player.h"
 #include "constants.h"
 #include "raylib.h"
+#include "raymath.h"  // For Vector2 operations
 #include <stdlib.h>
 
 //Collision/Debug Helpers
@@ -115,6 +116,68 @@ static Rectangle CreateBasicAttackHitbox(const Player* p, Rectangle collisionRec
     return hitbox;
 }
 
+// Add these new attack hitbox functions
+static Rectangle CreateCursorBasedAttackHitbox(const Player* p, Rectangle collisionRect) {
+    // Get player center in world coordinates
+    Vector2 playerCenter = {
+        collisionRect.x + collisionRect.width / 2.0f,
+        collisionRect.y + collisionRect.height / 2.0f
+    };
+    
+    // Get screen dimensions
+    int screenWidth = GetScreenWidth();
+    int screenHeight = GetScreenHeight();
+    
+    // Get cursor position relative to screen center
+    Vector2 cursorPos = GetMousePosition();
+    Vector2 screenCenter = { screenWidth / 2.0f, screenHeight / 2.0f };
+    
+    // Calculate cursor offset from screen center
+    Vector2 cursorOffset = {
+        (cursorPos.x - screenCenter.x) * p->physics.scale,
+        (cursorPos.y - screenCenter.y) * p->physics.scale
+    };
+    
+    // Calculate world space cursor position relative to player
+    Vector2 worldCursorPos = {
+        playerCenter.x + cursorOffset.x,
+        playerCenter.y + cursorOffset.y
+    };
+    
+    // Calculate attack box dimensions
+    float attackWidth = collisionRect.width * 1.0f;
+    float attackHeight = collisionRect.height * 1.0f;
+    
+    // Calculate direction from player to cursor
+    Vector2 diff = Vector2Subtract(worldCursorPos, playerCenter);
+    Vector2 direction = Vector2Normalize(diff);
+    
+    // Position the attack hitbox between player and cursor
+    float attackDistance = collisionRect.width * 1.5f; // Adjust this value to control attack range
+    Vector2 attackPos = Vector2Add(playerCenter, Vector2Scale(direction, attackDistance));
+    
+    return (Rectangle){
+        attackPos.x - attackWidth / 2.0f,
+        attackPos.y - attackHeight / 2.0f,
+        attackWidth,
+        attackHeight
+    };
+}
+
+static Rectangle CreateSuperAttackHitbox(const Player* p, Rectangle collisionRect) {
+    float centerX = collisionRect.x + collisionRect.width / 2.0f;
+    float centerY = collisionRect.y + collisionRect.height / 2.0f;
+    
+    // Create a large square area around the player
+    float size = p->physics.superAttackRadius * 2.0f;
+    return (Rectangle){
+        centerX - size / 2.0f,
+        centerY - size / 2.0f,
+        size,
+        size
+    };
+}
+
 //Public
 
 void InitPlayer(Player* p, const char* walkSpritePath, Vector2 startPos, float scaleVal) {
@@ -146,6 +209,13 @@ void InitPlayer(Player* p, const char* walkSpritePath, Vector2 startPos, float s
     p->physics.hitFlashColor = WHITE;
 
     p->physics.createAttackHitbox = CreateBasicAttackHitbox; // Set default attack
+
+    p->physics.maxHealth = 10;
+    p->physics.currentHealth = 10;
+    p->physics.attackDamage = 1;
+
+    p->physics.superAttackRadius = 100.0f;  // Adjust this value as needed
+    p->physics.lastCursorPos = (Vector2){0, 0};
 }
 
 void LoadActionSprite(Player* p, const char* actionSpritePath, int rows, int columns) {
@@ -168,37 +238,48 @@ static void SelectActiveSprite(Player* p) {
 void UpdatePlayer(Player* p, GameMap* map, float dt) {
     // Store old position for collision resolution
     Vector2 oldPos = p->physics.position;
+    int isMoving = 0;  // Track if player is actually moving
     
     if (ENTITIES_CAN_MOVE) {
         // Track movement direction
         Vector2 moveDir = {0.0f, 0.0f};
         
         // Capture input direction
-        if (IsKeyDown(KEY_RIGHT)) {
+        if (IsKeyDown(KEY_RIGHT )|| IsKeyDown(KEY_D)) {
             moveDir.x += 1.0f;
             p->facingDir = 3;
             p->state = PLAYER_STATE_WALK;
+            isMoving = 1;
         }
-        if (IsKeyDown(KEY_LEFT)) {
+        if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
             moveDir.x -= 1.0f;
             p->facingDir = 2;
             p->state = PLAYER_STATE_WALK;
+            isMoving = 1;
         }
-        if (IsKeyDown(KEY_UP)) {
+        if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
             moveDir.y -= 1.0f;
             p->facingDir = 1;
             p->state = PLAYER_STATE_WALK;
+            isMoving = 1;
         }
-        if (IsKeyDown(KEY_DOWN)) {
+        if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
             moveDir.y += 1.0f;
             p->facingDir = 0;
             p->state = PLAYER_STATE_WALK;
+            isMoving = 1;
+        }
+
+        // If not moving, set to idle state
+        if (!isMoving) {
+            p->state = PLAYER_STATE_IDLE;
+            p->currentFrame = 0;  // Reset to first frame when idle TODO add idle animation but dont have art
         }
         
         // Apply movement speed (now using the same speed for diagonal)
         float speed = p->physics.speed;
         if (moveDir.x != 0.0f && moveDir.y != 0.0f) {
-            // For diagonal movement, multiply by approximately 0.707 (1/√2)
+            // if diagonal move (1/√2)
             speed *= 0.7071f;
         }
         
@@ -221,34 +302,44 @@ void UpdatePlayer(Player* p, GameMap* map, float dt) {
 
     p->frameTime += dt;
 
-    if (IsKeyPressed(KEY_H)) {
-        p->state = PLAYER_STATE_ACTION1;
-        p->currentFrame = 0;
-        p->frameTime = 0.0f;
-    }
+    // Store cursor position (just use screen coordinates)
+    p->physics.lastCursorPos = GetMousePosition();
+
+    // Handle attacks
+    Rectangle collisionRect = GetPlayerCollisionRect(p);
+    
     if (IsKeyPressed(KEY_J) && !p->physics.isAttacking) {
+        // Basic attack (cursor-based)
         p->state = PLAYER_STATE_ATTACK;
         p->physics.isAttacking = 1;
         p->physics.attackTimer = p->physics.attackDuration;
-        
-        // Use the function pointer to create the attack hitbox
-        Rectangle collisionRect = GetPlayerCollisionRect(p);
-        p->physics.attackHitbox = p->physics.createAttackHitbox(p, collisionRect);
-    }
-    if (IsKeyPressed(KEY_K)) {
-        p->state = PLAYER_STATE_ACTION3;
-        p->currentFrame = 0;
-        p->frameTime = 0.0f;
+        p->physics.attackHitbox = CreateCursorBasedAttackHitbox(p, collisionRect);
     }
     
+    if (IsKeyPressed(KEY_K) && !p->physics.isAttacking) {
+        // Strong attack (directional)
+        p->state = PLAYER_STATE_ATTACK;
+        p->physics.isAttacking = 1;
+        p->physics.attackTimer = p->physics.attackDuration;
+        p->physics.attackHitbox = CreateBasicAttackHitbox(p, collisionRect);
+    }
+    
+    if (IsKeyPressed(KEY_H) && !p->physics.isAttacking) {
+        // Super attack (area)
+        p->state = PLAYER_STATE_ATTACK;
+        p->physics.isAttacking = 1;
+        p->physics.attackTimer = p->physics.attackDuration;
+        p->physics.attackHitbox = CreateSuperAttackHitbox(p, collisionRect);
+    }
+
     SelectActiveSprite(p);
     
     switch (p->state) {
         case PLAYER_STATE_IDLE:
-            p->currentFrame = 0;
+            p->currentFrame = 0;  // Always show first frame when idle
             break;
         case PLAYER_STATE_WALK:
-            if (p->frameTime >= p->frameDelay) {
+            if (isMoving && p->frameTime >= p->frameDelay) {
                 p->currentFrame = (p->currentFrame + 1) % p->sprite.columns; 
                 p->frameTime = 0.0f;
             }
@@ -337,4 +428,18 @@ void UnloadPlayer(Player* p) {
         UnloadTexture(p->actionSprite.texture);
         p->actionSprite.texture.id = 0;
     }
+}
+
+void PlayerTakeDamage(Player* p, int damage) {
+    p->physics.currentHealth -= damage;
+    if (p->physics.currentHealth < 0) {
+        p->physics.currentHealth = 0;
+    }
+    // Trigger hit flash effect
+    p->physics.hitFlashTimer = 0.2f;  // 0.2 seconds of flash
+    p->physics.hitFlashColor = RED;
+}
+
+int IsPlayerAlive(const Player* p) {
+    return p->physics.currentHealth > 0 ? 1 : 0;
 }

@@ -1,5 +1,9 @@
 #include "monster.h"
+#include "constants.h"
 #include <stdlib.h>
+
+// Define the global variable
+int ENTITIES_CAN_MOVE = 1;
 
 // Helper function to set up common monster properties
 static void InitializeMonsterData(Entity* monster, MonsterType type, int maxHealth, 
@@ -46,8 +50,11 @@ void MonsterTakeDamage(Entity* monster, int damage) {
         stats->currentHealth = 0;
         stats->state = MONSTER_STATE_DEAD;
         monster->isAlive = false;
+        TraceLog(LOG_INFO, "Monster died! Final health: %d", stats->currentHealth);
     } else {
         stats->state = MONSTER_STATE_HURT;
+        TraceLog(LOG_INFO, "Monster took %d damage! Current health: %d/%d", 
+                damage, stats->currentHealth, stats->maxHealth);
     }
 }
 
@@ -67,4 +74,13 @@ void SetMonsterState(Entity* monster, MonsterState state) {
     MonsterData* data = (MonsterData*)monster->data;
     MonsterStats* stats = (MonsterStats*)data->stats;
     stats->state = state;
+}
+
+// Example of how monster movement should be controlled
+void UpdateMonster(Entity* monster) {
+    if (!ENTITIES_CAN_MOVE) {
+        return;  // Skip movement if entities can't move
+    }
+    
+    // ... rest of monster movement code ...
 } 
