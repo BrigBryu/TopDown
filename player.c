@@ -216,6 +216,15 @@ void InitPlayer(Player* p, const char* walkSpritePath, Vector2 startPos, float s
 
     p->physics.superAttackRadius = 100.0f;  // Adjust this value as needed
     p->physics.lastCursorPos = (Vector2){0, 0};
+
+    // Initialize dash properties
+    p->physics.isDashing = 0;
+    p->physics.dashTimer = 0.0f;
+    p->physics.dashDuration = 0.2f;    // 0.2 seconds dash duration
+    p->physics.dashSpeed = 8.0f;       // 4x normal speed
+    p->physics.dashCooldown = 1.0f;    // 1 second between dashes
+    p->physics.dashCooldownTimer = 0.0f;
+    p->physics.dashDirection = (Vector2){0, 0};
 }
 
 void LoadActionSprite(Player* p, const char* actionSpritePath, int rows, int columns) {
@@ -332,6 +341,50 @@ void UpdatePlayer(Player* p, GameMap* map, float dt) {
         p->physics.attackHitbox = CreateSuperAttackHitbox(p, collisionRect);
     }
 
+    // Update dash cooldown
+    if (p->physics.dashCooldownTimer > 0) {
+        p->physics.dashCooldownTimer -= dt;
+    }
+
+    // Handle dash input
+    if ((IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_LEFT_SHIFT)) && 
+        !p->physics.isDashing && p->physics.dashCooldownTimer <= 0) {
+        
+        // Only dash if we have a movement direction
+        if (moveDir.x != 0.0f || moveDir.y != 0.0f) {
+            p->physics.isDashing = 1;
+            p->physics.dashTimer = p->physics.dashDuration;
+            p->physics.dashDirection = moveDir;
+            p->state = PLAYER_STATE_DASH;
+        }
+    }
+
+    // Update dash if active
+    if (p->physics.isDashing) {
+        p->physics.dashTimer -= dt;
+        if (p->physics.dashTimer > 0) {
+            // Store old position for collision
+            Vector2 oldDashPos = p->physics.position;
+            
+            // Apply dash movement
+            p->physics.position.x += p->physics.dashDirection.x * p->physics.dashSpeed;
+            Rectangle playerRect = GetPlayerCollisionRect(p);
+            if (CheckCollisionObjects(map, playerRect, PIXEL_SCALE)) {
+                p->physics.position.x = oldDashPos.x;
+            }
+            
+            p->physics.position.y += p->physics.dashDirection.y * p->physics.dashSpeed;
+            playerRect = GetPlayerCollisionRect(p);
+            if (CheckCollisionObjects(map, playerRect, PIXEL_SCALE)) {
+                p->physics.position.y = oldDashPos.y;
+            }
+        } else {
+            // End dash
+            p->physics.isDashing = 0;
+            p->physics.dashCooldownTimer = p->physics.dashCooldown;
+            p->state = PLAYER_STATE_IDLE;
+        }
+    }
     SelectActiveSprite(p);
     
     switch (p->state) {
@@ -364,6 +417,13 @@ void UpdatePlayer(Player* p, GameMap* map, float dt) {
                     p->currentFrame = 0;
                     p->state = PLAYER_STATE_IDLE;
                 }
+            }
+            break;
+        case PLAYER_STATE_DASH:
+            // Use the walking animation frames for dash
+            if (p->frameTime >= p->frameDelay) {
+                p->currentFrame = (p->currentFrame + 1) % p->sprite.columns;
+                p->frameTime = 0.0f;
             }
             break;
     }
@@ -416,6 +476,23 @@ void DrawPlayer(Player* p) {
     if (p->physics.isAttacking) {
         DrawRectangleLines((int)p->physics.attackHitbox.x, (int)p->physics.attackHitbox.y,
                           (int)p->physics.attackHitbox.width, (int)p->physics.attackHitbox.height, RED);
+    }
+
+    // Add dash effect
+    if (p->physics.isDashing) {
+        // Draw a trail effect or something similar
+        Color dashColor = (Color){255, 255, 255, 128}; // Semi-transparent white
+        Vector2 trailOffset = {
+            -p->physics.dashDirection.x * 20.0f,
+            -p->physics.dashDirection.y * 20.0f
+        };
+        
+        Rectangle trailDestRec = destRec;
+        trailDestRec.x += trailOffset.x;
+        trailDestRec.y += trailOffset.y;
+        
+        DrawTexturePro(p->sprite.texture, srcRec, trailDestRec, 
+                      (Vector2){0, 0}, 0.0f, dashColor);
     }
 }
 

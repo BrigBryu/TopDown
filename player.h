@@ -15,7 +15,8 @@ typedef enum {
     PLAYER_STATE_ATTACK,
     PLAYER_STATE_ACTION1,
     PLAYER_STATE_ACTION2,
-    PLAYER_STATE_ACTION3
+    PLAYER_STATE_ACTION3,
+    PLAYER_STATE_DASH
 } PlayerState;
 
 typedef struct PlayerSprite {
@@ -49,6 +50,13 @@ typedef struct PlayerPhysics {
     float attackDamage;    // Damage dealt to monsters
     Vector2 lastCursorPos;    // Store cursor position for basic attack
     float superAttackRadius;  // Radius for super attack
+    int isDashing;           // Track dash state
+    float dashTimer;         // How long the dash lasts
+    float dashDuration;      // Maximum dash duration
+    float dashSpeed;         // Speed during dash
+    float dashCooldown;      // Time between dashes
+    float dashCooldownTimer; // Current cooldown timer
+    Vector2 dashDirection;   // Direction of the dash
 } PlayerPhysics;
 
 // Now define the actual Player struct
